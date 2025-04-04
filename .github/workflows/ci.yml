@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      # ------------------------ Producer checks ------------------------
+      - name: Install Producer dependencies
+        run: |
+          cd producer
+          poetry config virtualenvs.create false
+          poetry install --with dev
+      - name: Lint Producer
+        run: |
+          cd producer
+          # Check code format with black
+          black --check .
+          # Lint code with flake8
+          flake8 .
+          # Check import sorting with isort
+          isort --check-only .
+      
+      # ------------------------ Consumer checks ------------------------
+      - name: Install Consumer dependencies
+        run: |
+          cd consumer
+          poetry config virtualenvs.create false
+          poetry install --with dev
+      - name: Lint Consumer
+        run: |
+          cd consumer
+          black --check .
+          flake8 .
+          isort --check-only .
+
+      # ------------------------ Prefect Flow checks ------------------------
+      - name: Install Flow dependencies
+        run: |
+          cd prefect_flow
+          poetry config virtualenvs.create false
+          poetry install --with dev
+      - name: Lint Prefect Flow
+        run: |
+          cd prefect_flow
+          black --check .
+          flake8 .
+          isort --check-only .

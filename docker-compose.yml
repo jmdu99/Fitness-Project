@@ -1,0 +1,87 @@
+version: "3.8"
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  producer:
+    build: ./producer
+    container_name: producer
+    depends_on:
+      - kafka
+    environment:
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - CSV_S3_PATH=${CSV_S3_PATH}
+      - MAPPING_S3_PATH=${MAPPING_S3_PATH}
+      - API_NINJAS_API_KEY=${API_NINJAS_API_KEY}
+    restart: always
+
+  consumer:
+    build: ./consumer
+    container_name: consumer
+    depends_on:
+      - kafka
+      - mongo
+    restart: always
+
+  prefect_flow:
+    build: ./prefect_flow
+    container_name: prefect_flow
+    depends_on:
+      - mongo
+    ports:
+      - "4200:4200"   # Prefect Orion UI
+    environment:
+      - PREFECT_ORION_UI_API_URL=http://0.0.0.0:4200/api
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - REDSHIFT_HOST=${REDSHIFT_HOST}
+      - REDSHIFT_PORT=${REDSHIFT_PORT}
+      - REDSHIFT_DB=${REDSHIFT_DB}
+      - REDSHIFT_USER=${REDSHIFT_USER}
+      - REDSHIFT_PASSWORD=${REDSHIFT_PASSWORD}
+      - CSV_S3_PATH=${CSV_S3_PATH}
+      - MAPPING_S3_PATH=${MAPPING_S3_PATH}
+      - MONGO_URI=mongodb://mongo:27017/
+    restart: "always"
+    volumes:
+      - prefect_data:/root/.prefect
+
+volumes:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  mongo_data:
+  prefect_data:
+  
