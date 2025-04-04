@@ -1,9 +1,10 @@
 import os
+
+import boto3
 import pandas as pd
 import psycopg2
-from pymongo import MongoClient
 from prefect import flow, task
-import boto3
+from pymongo import MongoClient
 
 # --------------------------------------------------------------------------------
 # MongoDB Connection Setup
@@ -28,11 +29,8 @@ AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 CSV_S3_PATH = os.getenv("CSV_S3_PATH", None)
 
 # Mapping for level factors
-LEVEL_MAPPING = {
-    "Beginner": 1.0,
-    "Intermediate": 1.3,
-    "Advanced": 1.6
-}
+LEVEL_MAPPING = {"Beginner": 1.0, "Intermediate": 1.3, "Advanced": 1.6}
+
 
 @task
 def download_csv_from_s3():
@@ -49,10 +47,11 @@ def download_csv_from_s3():
     s3.download_file(bucket, key, local_csv)
     return local_csv
 
+
 @task
 def get_last_timestamp():
     """
-    Connects to Redshift and retrieves the maximum timestamp from the 
+    Connects to Redshift and retrieves the maximum timestamp from the
     exercises_enriched table. If the table does not exist, returns 0.
     """
     conn = psycopg2.connect(
@@ -60,7 +59,7 @@ def get_last_timestamp():
         user=os.getenv("REDSHIFT_USER", ""),
         password=os.getenv("REDSHIFT_PASSWORD", ""),
         host=os.getenv("REDSHIFT_HOST", ""),
-        port=int(os.getenv("REDSHIFT_PORT", "5439"))
+        port=int(os.getenv("REDSHIFT_PORT", "5439")),
     )
     cur = conn.cursor()
     try:
@@ -75,16 +74,21 @@ def get_last_timestamp():
     print(f"Last timestamp in Redshift: {last_ts}", flush=True)
     return last_ts
 
+
 @task
 def extract_from_mongo(last_ts: int):
     """
-    Extracts documents from the 'exercises_calories' collection in MongoDB that have a 
+    Extracts documents from the 'exercises_calories' collection in MongoDB that have a
     'timestamp' greater than the given last_ts.
     """
     docs = list(db["exercises_calories"].find({"timestamp": {"$gt": last_ts}}))
     df = pd.DataFrame(docs)
-    print(f"Extracted {len(df)} new documents from Mongo (timestamp > {last_ts}).", flush=True)
+    print(
+        f"Extracted {len(df)} new documents from Mongo (timestamp > {last_ts}).",
+        flush=True,
+    )
     return df
+
 
 @task
 def merge_csv_data(mongo_df: pd.DataFrame, local_csv: str):
@@ -112,17 +116,15 @@ def merge_csv_data(mongo_df: pd.DataFrame, local_csv: str):
         "Equipment": "equipment",
         "Level": "level",
         "Rating": "rating",
-        "RatingDesc": "rating_desc"
+        "RatingDesc": "rating_desc",
     }
     csv_df.rename(columns=rename_map, inplace=True)
 
     merged_df = mongo_df.merge(
-        csv_df,
-        how="left",
-        left_on="title",
-        right_on="Title"  # original CSV column
+        csv_df, how="left", left_on="title", right_on="Title"  # original CSV column
     )
     return merged_df
+
 
 @task
 def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
@@ -141,34 +143,44 @@ def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df["weight"] = df["weight"].replace({0: 1})
 
     df["kcal_per_minute"] = df.apply(
-        lambda row: row["total_calories_aprox"] / row["duration"]
-        if row.get("total_calories_aprox", 0) and row.get("duration", 0)
-        else 0,
-        axis=1
+        lambda row: (
+            row["total_calories_aprox"] / row["duration"]
+            if row.get("total_calories_aprox", 0) and row.get("duration", 0)
+            else 0
+        ),
+        axis=1,
     )
 
     df["kcal_per_lb"] = df.apply(
-        lambda row: row["total_calories_aprox"] / row["weight"]
-        if row.get("total_calories_aprox", 0) and row.get("weight", 0)
-        else 0,
-        axis=1
+        lambda row: (
+            row["total_calories_aprox"] / row["weight"]
+            if row.get("total_calories_aprox", 0) and row.get("weight", 0)
+            else 0
+        ),
+        axis=1,
     )
 
     df["enjoyment_weighted_kcal"] = df.apply(
-        lambda row: row["total_calories_aprox"] * (row["rating"] / 10.0)
-        if pd.notnull(row.get("total_calories_aprox")) and pd.notnull(row.get("rating"))
-        else 0,
-        axis=1
+        lambda row: (
+            row["total_calories_aprox"] * (row["rating"] / 10.0)
+            if pd.notnull(row.get("total_calories_aprox"))
+            and pd.notnull(row.get("rating"))
+            else 0
+        ),
+        axis=1,
     )
 
     df["level_factor"] = df["level"].map(LEVEL_MAPPING).fillna(1.0)
     df["level_weighted_kcal"] = df.apply(
-        lambda row: row["total_calories_aprox"] * row["level_factor"]
-        if pd.notnull(row.get("total_calories_aprox"))
-        else 0,
-        axis=1
+        lambda row: (
+            row["total_calories_aprox"] * row["level_factor"]
+            if pd.notnull(row.get("total_calories_aprox"))
+            else 0
+        ),
+        axis=1,
     )
     return df
+
 
 @task
 def load_to_redshift(df: pd.DataFrame):
@@ -181,7 +193,7 @@ def load_to_redshift(df: pd.DataFrame):
       - level, rating, rating_desc,
       - kcal_per_minute, kcal_per_lb, enjoyment_weighted_kcal,
       - level_weighted_kcal, timestamp.
-      
+
     This task:
       - Reindexes the DataFrame to ensure exactly these 17 columns.
       - Filters out rows where total_calories_aprox is missing (None/NaN).
@@ -193,28 +205,39 @@ def load_to_redshift(df: pd.DataFrame):
 
     # Define the final column order
     final_columns = [
-        "event_id", "title", "weight", "duration",
-        "calories_per_hour_aprox", "total_calories_aprox",
-        "description", "exercise_type", "body_part", "equipment",
-        "level", "rating", "rating_desc",
-        "kcal_per_minute", "kcal_per_lb",
-        "enjoyment_weighted_kcal", "level_weighted_kcal",
-        "timestamp"
+        "event_id",
+        "title",
+        "weight",
+        "duration",
+        "calories_per_hour_aprox",
+        "total_calories_aprox",
+        "description",
+        "exercise_type",
+        "body_part",
+        "equipment",
+        "level",
+        "rating",
+        "rating_desc",
+        "kcal_per_minute",
+        "kcal_per_lb",
+        "enjoyment_weighted_kcal",
+        "level_weighted_kcal",
+        "timestamp",
     ]
-    
+
     # Reindex the DataFrame to exactly these columns
     df = df.reindex(columns=final_columns)
-    
+
     # Filter out rows with missing total_calories_aprox
     df = df[df["total_calories_aprox"].notna()]
-    
+
     # Connect to Redshift
     conn = psycopg2.connect(
         dbname=os.getenv("REDSHIFT_DB", ""),
         user=os.getenv("REDSHIFT_USER", ""),
         password=os.getenv("REDSHIFT_PASSWORD", ""),
         host=os.getenv("REDSHIFT_HOST", ""),
-        port=int(os.getenv("REDSHIFT_PORT", "5439"))
+        port=int(os.getenv("REDSHIFT_PORT", "5439")),
     )
     cur = conn.cursor()
 
@@ -268,6 +291,7 @@ def load_to_redshift(df: pd.DataFrame):
     conn.close()
     print(f"Inserted {rows_inserted} new rows into Redshift.", flush=True)
 
+
 @flow
 def etl_flow():
     """
@@ -286,6 +310,7 @@ def etl_flow():
     merged_df = merge_csv_data(mongo_df, local_csv)
     derived_df = compute_derived_metrics(merged_df)
     load_to_redshift(derived_df)
+
 
 if __name__ == "__main__":
     etl_flow()
