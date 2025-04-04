@@ -29,7 +29,7 @@ jobs:
         run: |
           cd producer
           poetry config virtualenvs.create false
-          poetry install --with dev
+          poetry install --with dev --no-root
       - name: Lint Producer
         run: |
           cd producer
@@ -45,7 +45,7 @@ jobs:
         run: |
           cd consumer
           poetry config virtualenvs.create false
-          poetry install --with dev
+          poetry install --with dev --no-root
       - name: Lint Consumer
         run: |
           cd consumer
@@ -58,7 +58,7 @@ jobs:
         run: |
           cd prefect_flow
           poetry config virtualenvs.create false
-          poetry install --with dev
+          poetry install --with dev --no-root
       - name: Lint Prefect Flow
         run: |
           cd prefect_flow
