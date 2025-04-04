@@ -1,12 +1,13 @@
-import os
 import json
+import os
 import random
+import socket
 import time
+
 import boto3
 import pandas as pd
 import requests
 from kafka import KafkaProducer
-import socket
 
 # --------------------------------------------------------------------------------
 # Environment variables for AWS region, and S3 paths for CSV + mapping.json
@@ -30,6 +31,7 @@ HEADERS = {"X-Api-Key": API_NINJAS_API_KEY}
 LOCAL_CSV = "megaGymDataset.csv"
 LOCAL_MAPPING = "mapping.json"
 
+
 def wait_for_kafka(bootstrap_server, timeout=60):
     """Wait until a connection to the Kafka broker is available."""
     start_time = time.time()
@@ -44,7 +46,10 @@ def wait_for_kafka(bootstrap_server, timeout=60):
         except Exception as e:
             print(f"Waiting for Kafka broker {bootstrap_server}... ({e})", flush=True)
             time.sleep(3)
-    raise Exception(f"Kafka broker {bootstrap_server} not available after {timeout} seconds.")
+    raise Exception(
+        f"Kafka broker {bootstrap_server} not available after {timeout} seconds."
+    )
+
 
 def download_from_s3(s3_path, local_path):
     """
@@ -57,25 +62,27 @@ def download_from_s3(s3_path, local_path):
     print(f"Downloading from {s3_path} to {local_path} ...", flush=True)
     s3.download_file(bucket, key, local_path)
 
+
 def call_calories_api(activity_name, weight, duration):
     """
     Call the Ninja's Calories Burned API with the specified activity, weight, and duration.
     Returns a dict containing 'calories_per_hour' and 'total_calories' if successful,
     else returns None.
     """
-    params = {
-        "activity": activity_name,
-        "weight": weight,
-        "duration": duration
-    }
+    params = {"activity": activity_name, "weight": weight, "duration": duration}
     try:
-        response = requests.get(CALORIES_API_URL, headers=HEADERS, params=params, timeout=10)
+        response = requests.get(
+            CALORIES_API_URL, headers=HEADERS, params=params, timeout=10
+        )
     except Exception as e:
         print(f"Error during API request for '{activity_name}': {e}", flush=True)
         return None
 
     if response.status_code != 200:
-        print(f"API call failed with status {response.status_code} for activity '{activity_name}': {response.text}", flush=True)
+        print(
+            f"API call failed with status {response.status_code} for activity '{activity_name}': {response.text}",
+            flush=True,
+        )
         return None
 
     try:
@@ -89,6 +96,7 @@ def call_calories_api(activity_name, weight, duration):
         return None
 
     return data[0]
+
 
 def main():
     """
@@ -121,7 +129,7 @@ def main():
         bootstrap_servers=bootstrap_server,
         retries=5,
         retry_backoff_ms=1000,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
 
     print("Producer started. Publishing to 'exercises_to_enrich'...", flush=True)
@@ -148,7 +156,10 @@ def main():
         api_result = call_calories_api(activity_for_api, weight, duration)
 
         if api_result is None:
-            print(f"Error: API call failed for activity '{activity_for_api}'. Skipping message.", flush=True)
+            print(
+                f"Error: API call failed for activity '{activity_for_api}'. Skipping message.",
+                flush=True,
+            )
             time.sleep(5)
             continue
 
@@ -160,7 +171,7 @@ def main():
             "duration": duration,
             "calories_per_hour_aprox": api_result["calories_per_hour"],
             "total_calories_aprox": api_result["total_calories"],
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
         }
 
         # Send the message to Kafka
@@ -171,6 +182,7 @@ def main():
 
         # Sleep 5 seconds before next iteration
         time.sleep(5)
+
 
 if __name__ == "__main__":
     main()
