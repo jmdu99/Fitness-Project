@@ -1,6 +1,7 @@
-import os
 import json
+import os
 import time
+
 import pandas as pd
 import requests
 from dotenv import load_dotenv
@@ -20,6 +21,7 @@ if not OPENAI_API_KEY:
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+
 def get_supported_activities():
     """
     Retrieve the list of supported activities from the API Ninjas endpoint.
@@ -36,6 +38,7 @@ def get_supported_activities():
     else:
         raise Exception(f"Request error: {response.status_code} - {response.text}")
 
+
 def map_exercise_to_activity_gpt4(exercise, activities):
     """
     Use GPT-4o to map a given exercise to the most similar supported activity.
@@ -49,13 +52,13 @@ def map_exercise_to_activity_gpt4(exercise, activities):
     )
     try:
         response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="gpt-4o"
+            messages=[{"role": "user", "content": prompt}], model="gpt-4o"
         )
         answer = response.choices[0].message.content.strip()
         return answer
     except Exception as e:
         print(f"Error mapping exercise '{exercise}': {e}")
+
 
 def generate_mapping(csv_file, output_file):
     """
@@ -86,7 +89,10 @@ def generate_mapping(csv_file, output_file):
         json.dump(mapping, f, indent=4)
     print(f"Mapping saved to {output_file}")
 
+
 if __name__ == "__main__":
-    csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'megaGymDataset.csv')
+    csv_path = os.path.join(
+        os.path.dirname(__file__), "..", "data", "megaGymDataset.csv"
+    )
     output_path = "mapping.json"
     generate_mapping(csv_path, output_path)
