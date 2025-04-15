@@ -134,6 +134,7 @@ def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
       - kcal_per_lb = total_calories_aprox / weight
       - enjoyment_weighted_kcal = total_calories_aprox * (rating / 10)
       - level_weighted_kcal = total_calories_aprox * level_factor
+      - kcal_per_hour_per_kg = (total_calories_aprox / (duration * weight * 0.453592)) * 60
     """
     if df.empty:
         return df
@@ -179,6 +180,19 @@ def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
         ),
         axis=1,
     )
+
+    df["kcal_per_hour_per_kg"] = df.apply(
+        lambda row: (
+            (row["total_calories_aprox"] / (row["duration"] * row["weight"] * 0.453592)) * 60
+            if pd.notnull(row.get("total_calories_aprox"))
+            and pd.notnull(row.get("duration"))
+            and pd.notnull(row.get("weight"))
+            and row["duration"] > 0
+            and row["weight"] > 0
+            else 0
+        ),
+        axis=1,
+    )
     return df
 
 
@@ -186,16 +200,16 @@ def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
 def load_to_redshift(df: pd.DataFrame):
     """
     Connects to Redshift and inserts new records into the 'exercises_enriched' table.
-    The table contains 17 columns:
+    The table contains 19 columns:
       - event_id, title, weight, duration,
       - calories_per_hour_aprox, total_calories_aprox,
       - description, exercise_type, body_part, equipment,
       - level, rating, rating_desc,
       - kcal_per_minute, kcal_per_lb, enjoyment_weighted_kcal,
-      - level_weighted_kcal, timestamp.
+      - level_weighted_kcal, kcal_per_hour_per_kg, timestamp.
 
     This task:
-      - Reindexes the DataFrame to ensure exactly these 17 columns.
+      - Reindexes the DataFrame to ensure exactly these 19 columns.
       - Filters out rows where total_calories_aprox is missing (None/NaN).
       - Then inserts the new records into Redshift.
     """
@@ -222,6 +236,7 @@ def load_to_redshift(df: pd.DataFrame):
         "kcal_per_lb",
         "enjoyment_weighted_kcal",
         "level_weighted_kcal",
+        "kcal_per_hour_per_kg",
         "timestamp",
     ]
 
@@ -261,6 +276,7 @@ def load_to_redshift(df: pd.DataFrame):
         kcal_per_lb FLOAT,
         enjoyment_weighted_kcal FLOAT,
         level_weighted_kcal FLOAT,
+        kcal_per_hour_per_kg FLOAT,
         timestamp BIGINT
     );
     """
@@ -275,9 +291,9 @@ def load_to_redshift(df: pd.DataFrame):
         description, exercise_type, body_part, equipment,
         level, rating, rating_desc,
         kcal_per_minute, kcal_per_lb,
-        enjoyment_weighted_kcal, level_weighted_kcal, timestamp
+        enjoyment_weighted_kcal, level_weighted_kcal, kcal_per_hour_per_kg, timestamp
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
     """
 
     rows_inserted = 0
