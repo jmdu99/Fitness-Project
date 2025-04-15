@@ -183,7 +183,8 @@ def compute_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     df["kcal_per_hour_per_kg"] = df.apply(
         lambda row: (
-            (row["total_calories_aprox"] / (row["duration"] * row["weight"] * 0.453592)) * 60
+            (row["total_calories_aprox"] / (row["duration"] * row["weight"] * 0.453592))
+            * 60
             if pd.notnull(row.get("total_calories_aprox"))
             and pd.notnull(row.get("duration"))
             and pd.notnull(row.get("weight"))
