@@ -13,7 +13,7 @@ services:
       - zookeeper_log:/var/lib/zookeeper/log
 
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: bitnami/kafka:3.3.2
     container_name: kafka
     depends_on:
       - zookeeper
